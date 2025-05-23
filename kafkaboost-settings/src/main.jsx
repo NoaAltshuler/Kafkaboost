@@ -1,3 +1,4 @@
+// main.jsx
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
@@ -13,8 +14,9 @@ import '@aws-amplify/ui-react/styles.css';
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Authenticator>
-      {({ signOut, user }) => <App />}
+      {({ signOut, user }) => (
+        <App user={user} signOut={signOut} />
+      )}
     </Authenticator>
   </StrictMode>
 );
-

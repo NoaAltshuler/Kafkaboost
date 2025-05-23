@@ -1,20 +1,30 @@
 import { useEffect, useState } from 'react';
-import { Storage, Auth } from 'aws-amplify';
+import { Storage } from 'aws-amplify';
+import { getCurrentUser } from 'aws-amplify/auth';
 
 export default function SettingsHistory({ onSelect }) {
   const [versions, setVersions] = useState([]);
 
   useEffect(() => {
     async function fetchVersions() {
-      const user = await Auth.currentAuthenticatedUser();
-      const userId = user.attributes.sub;
+      try {
+        const user = await getCurrentUser();
+        const userId = user.userId;
 
-      const result = await Storage.list(`${userId}/`);
-      const files = result
-        .filter(item => item.key.endsWith('.json') && !item.key.includes('latest'))
-        .sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified)); // הכי חדשה למעלה
+        const result = await Storage.list(`${userId}/`);
+        const files = result
+          .filter(item =>
+            item.key.endsWith('.json') &&
+            !item.key.includes('latest')
+          )
+          .sort((a, b) =>
+            new Date(b.lastModified || b.key) - new Date(a.lastModified || a.key)
+          );
 
-      setVersions(files);
+        setVersions(files);
+      } catch (err) {
+        console.error("⚠️ לא ניתן לטעון גרסאות מה-S3:", err);
+      }
     }
 
     fetchVersions();
@@ -24,11 +34,14 @@ export default function SettingsHistory({ onSelect }) {
     const key = e.target.value;
     if (!key) return;
 
-    const file = await Storage.get(key, { download: true });
-    const text = await file.Body.text();
-    const json = JSON.parse(text);
-
-    onSelect(json);
+    try {
+      const file = await Storage.get(key, { download: true });
+      const text = await file.Body.text();
+      const json = JSON.parse(text);
+      onSelect(json);
+    } catch (err) {
+      console.error("❌ שגיאה בטעינת גרסה:", err);
+    }
   };
 
   return (
