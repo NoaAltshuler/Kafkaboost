@@ -1,10 +1,22 @@
-const cognitoAuthConfig = {
-    authority: "https://eu-north-1v6hez02lg.auth.eu-north-1.amazoncognito.com",
-    client_id: "3m8nr1udadq2kqnkj27l9b2bi1",
-    redirect_uri: "http://tal-noa-reactapp-kafkaboost.s3-website.eu-north-1.amazonaws.com/",
-    response_type: "code",
-    scope: "openid email profile",
-  };
-  
-  export default cognitoAuthConfig;
-  
+const authConfig = {
+  Auth: {
+    region: 'us-east-1',
+    userPoolId: 'us-east-1_UWnIqsEAY',
+    userPoolWebClientId: 'kjjdnu5tlesmonjq39aeik5ms',
+    oauth: {
+      domain: 'us-east-1uwniqseay.auth.us-east-1.amazoncognito.com',
+      scope: ['email', 'openid', 'profile'],
+      redirectSignIn: 'https://master.d158m42rfyjjwz.amplifyapp.com/',
+      redirectSignOut: 'https://master.d158m42rfyjjwz.amplifyapp.com/',
+      responseType: 'code',
+    },
+  },
+  Storage: {
+    AWSS3: {
+      bucket: 'kafkaboost-user-settings',
+      region: 'us-east-1',
+    },
+  },
+};
+
+export default authConfig;
