@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Storage } from 'aws-amplify';
-import { getCurrentUser } from 'aws-amplify/auth';
+//import { Storage } from 'aws-amplify';
+//import { getCurrentUser } from 'aws-amplify/auth';
+
+
 
 export default function SettingsHistory({ onSelect }) {
   const [versions, setVersions] = useState([]);
