@@ -1,62 +1,33 @@
-import { useEffect, useState } from 'react';
-//import { Storage } from 'aws-amplify';
-//import { getCurrentUser } from 'aws-amplify/auth';
+import React from 'react';
 
-
-
-export default function SettingsHistory({ onSelect }) {
-  const [versions, setVersions] = useState([]);
-
-  useEffect(() => {
-    async function fetchVersions() {
-      try {
-        const user = await getCurrentUser();
-        const userId = user.userId;
-
-        const result = await Storage.list(`${userId}/`);
-        const files = result
-          .filter(item =>
-            item.key.endsWith('.json') &&
-            !item.key.includes('latest')
-          )
-          .sort((a, b) =>
-            new Date(b.lastModified || b.key) - new Date(a.lastModified || a.key)
-          );
-
-        setVersions(files);
-      } catch (err) {
-        console.error("⚠️ לא ניתן לטעון גרסאות מה-S3:", err);
-      }
-    }
-
-    fetchVersions();
-  }, []);
-
-  const handleSelect = async (e) => {
-    const key = e.target.value;
-    if (!key) return;
-
-    try {
-      const file = await Storage.get(key, { download: true });
-      const text = await file.Body.text();
-      const json = JSON.parse(text);
-      onSelect(json);
-    } catch (err) {
-      console.error("❌ שגיאה בטעינת גרסה:", err);
-    }
-  };
+const SettingsHistory = ({ versions, onSelectVersion }) => {
+  if (!versions || versions.length === 0) {
+    return <p>No previous settings found.</p>;
+  }
 
   return (
-    <div>
-      <h3>בחר גרסה קודמת</h3>
-      <select onChange={handleSelect}>
-        <option value="">-- בחר גרסה --</option>
-        {versions.map((v, idx) => (
-          <option key={idx} value={v.key}>
-            {v.key.split('/')[1].replace('.json', '')}
-          </option>
-        ))}
-      </select>
+    <div className="settings-history">
+      <h3>Settings History:</h3>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {versions.map((version, idx) => {
+          const fileName = version.key.split('/').pop();
+          const displayName = fileName.replace('settings-', '').replace('.json', '');
+          const date = version.lastModified
+            ? new Date(version.lastModified).toLocaleString()
+            : 'Unknown date';
+
+          return (
+            <li key={idx} style={{ marginBottom: '8px' }}>
+              <button onClick={() => onSelectVersion(version.key)}>
+                ⏳ {date}
+              </button>
+              <span style={{ marginLeft: '8px', color: '#888' }}>{fileName}</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
-}
+};
+
+export default SettingsHistory;

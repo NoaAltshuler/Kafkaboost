@@ -1,22 +1,17 @@
-// main.jsx
-import { StrictMode } from 'react';
-import { createRoot } from 'react-dom/client';
-import './index.css';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+import './index.css'; // אם יש לך עיצוב כללי
 
-import { Amplify } from 'aws-amplify';
-import config from './authConfig';
-Amplify.configure(config);
+import { Amplify } from 'aws-amplify'; // ✅
+import awsconfig from './aws-exports'; // 👈 זה נוצר ע"י Amplify CLI
 
-import { Authenticator } from '@aws-amplify/ui-react';
-import '@aws-amplify/ui-react/styles.css';
+// הגדרת חיבור ל-AWS Amplify (Cognito + S3)
+Amplify.configure(awsconfig);
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <Authenticator>
-      {({ signOut, user }) => (
-        <App user={user} signOut={signOut} />
-      )}
-    </Authenticator>
-  </StrictMode>
+// יצירת root והצגת האפליקציה
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
 );

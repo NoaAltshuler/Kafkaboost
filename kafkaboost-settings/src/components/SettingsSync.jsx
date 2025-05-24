@@ -1,28 +1,27 @@
+import React from 'react';
 
-import { useEffect } from 'react';
-//import { Storage } from 'aws-amplify'; 
-//import  {Auth}  from './node_modules/@aws-amplify';
-
-
-
-export default function SettingsSync({ onLoad, settingsToSave }) {
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const user = await Auth.currentAuthenticatedUser();
-        const userId = user.attributes.sub;
-
-        const result = await Storage.get(`${userId}/latest.json`, { download: true });
-        const text = await result.Body.text();
-        const data = JSON.parse(text);
-        onLoad(data);
-      } catch (err) {
-        console.warn("⚠️ לא נמצאו הגדרות שמורות", err);
-      }
-    }
-
-    loadSettings();
-  }, [settingsToSave]);
-
-  return null;
+function SettingsSync({ versions, onSelectVersion }) {
+  return (
+    <div style={{ marginBottom: '30px' }}>
+      <h3>Settings History:</h3>
+      {versions.length === 0 ? (
+        <p>No previous settings found.</p>
+      ) : (
+        <ul>
+          {versions.map((version) => {
+            const timestamp = new Date(version.lastModified).toLocaleString('he-IL');
+            return (
+              <li key={version.key}>
+                <button onClick={() => onSelectVersion(version.key)} style={{ background: 'none', border: 'none', color: 'blue', cursor: 'pointer' }}>
+                  📅 {timestamp}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
+
+export default SettingsSync;
