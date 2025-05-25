@@ -1,4 +1,4 @@
-// App.jsx (גרסה מלאה מעודכנת עם Priority Boost)
+// App.jsx (גרסה מלאה מעודכנת עם Role-Based Rules מלא)
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import logo from './assets/kafkaboost-logo.png';
@@ -31,6 +31,10 @@ function App() {
   }, []);
 
   const handleSubmit = async () => {
+    if (!defaultPriority || !maxPriority || isNaN(parseInt(maxPriority)) || isNaN(parseInt(defaultPriority))) {
+      setErrorMessage("❌ Please provide valid numeric values for Default and Max Priority.");
+      return;
+    }
     try {
       const user = await getCurrentUser();
       const userId = user.userId;
@@ -42,7 +46,7 @@ function App() {
         max_priority: parseInt(maxPriority),
         default_priority: parseInt(defaultPriority),
         Topics_priority: topics.filter(t => t.name && t.priority).map(t => ({ topic: t.name, priority: parseInt(t.priority) })),
-        Rule_Base_priority: valRules.filter(v => v.val && v.priority).map(v => ({ role_name: user.signInDetails?.loginId || 'user', value: v.val, priority: parseInt(v.priority) })),
+        Rule_Base_priority: valRules.filter(v => v.val && v.priority && v.role_name).map(v => ({ role_name: v.role_name, value: v.val, priority: parseInt(v.priority) })),
         Priority_boost: priorityBoost.map(b => ({ topic_name: b.topic_name, priority_boost_min_value: parseInt(b.priority_boost_min_value) }))
       };
 
@@ -112,7 +116,7 @@ function App() {
       const loaded = await response.json();
 
       setTopics((loaded.Topics_priority || []).map(t => ({ name: t.topic, priority: t.priority.toString() })));
-      setValRules((loaded.Rule_Base_priority || []).map(r => ({ val: r.value, priority: r.priority.toString() })));
+      setValRules((loaded.Rule_Base_priority || []).map(r => ({ role_name: r.role_name || '', val: r.value, priority: r.priority.toString() })));
       setPriorityBoost((loaded.Priority_boost || []).map(p => ({ topic_name: p.topic_name, priority_boost_min_value: p.priority_boost_min_value.toString() })));
       setDefaultPriority(loaded.default_priority?.toString() || '');
       setMaxPriority(loaded.max_priority?.toString() || '');
@@ -129,7 +133,7 @@ function App() {
       const loaded = await response.json();
 
       setTopics((loaded.Topics_priority || []).map(t => ({ name: t.topic, priority: t.priority.toString() })));
-      setValRules((loaded.Rule_Base_priority || []).map(r => ({ val: r.value, priority: r.priority.toString() })));
+      setValRules((loaded.Rule_Base_priority || []).map(r => ({ role_name: r.role_name || '', val: r.value, priority: r.priority.toString() })));
       setPriorityBoost((loaded.Priority_boost || []).map(p => ({ topic_name: p.topic_name, priority_boost_min_value: p.priority_boost_min_value.toString() })));
       setDefaultPriority(loaded.default_priority?.toString() || '');
       setMaxPriority(loaded.max_priority?.toString() || '');
@@ -217,13 +221,16 @@ function App() {
 
             {/* Value-Based Rules */}
             <div className="table-header">
-              <h3>Value-Based Rules <button onClick={() => setValRules([...valRules, { val: '', priority: '' }])} className="plus-button">➕</button></h3>
+              <h3>Value-Based Rules <button onClick={() => setValRules([...valRules, { role_name: '', val: '', priority: '' }])} className="plus-button">➕</button></h3>
             </div>
             <table className="styled-table">
-              <thead><tr><th>Value</th><th>Priority</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Role Name</th><th>Value</th><th>Priority</th><th>Actions</th></tr></thead>
               <tbody>
                 {valRules.map((val, index) => (
                   <tr key={index}>
+                    <td><input value={val.role_name} onChange={(e) => {
+                      const updated = [...valRules]; updated[index].role_name = e.target.value; setValRules(updated);
+                    }} className="input-style" /></td>
                     <td><input value={val.val} onChange={(e) => {
                       const updated = [...valRules]; updated[index].val = e.target.value; setValRules(updated);
                     }} className="input-style" /></td>
