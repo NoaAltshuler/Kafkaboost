@@ -1,0 +1,7 @@
+README.md
+setup.py
+kafkaboost.egg-info/PKG-INFO
+kafkaboost.egg-info/SOURCES.txt
+kafkaboost.egg-info/dependency_links.txt
+kafkaboost.egg-info/requires.txt
+kafkaboost.egg-info/top_level.txt
