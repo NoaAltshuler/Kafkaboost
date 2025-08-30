@@ -1,157 +1,146 @@
-import React, { useState } from 'react';
+// App.jsx (גרסה מלאה מעודכנת עם Role-Based Rules מלא)
+import React, { useState, useEffect } from 'react';
 import './App.css';
 import logo from './assets/kafkaboost-logo.png';
 import rocketIcon from './assets/rocket-icon.png';
+import { Amplify } from 'aws-amplify';
+import awsconfig from './aws-exports';
+import { getCurrentUser } from 'aws-amplify/auth';
+import { uploadData, list, getUrl } from 'aws-amplify/storage';
+import { withAuthenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
 
+Amplify.configure(awsconfig);
 
 function App() {
   const [stage, setStage] = useState('defineMax');
   const [topics, setTopics] = useState([]);
   const [valRules, setValRules] = useState([]);
+  const [priorityBoost, setPriorityBoost] = useState([]);
   const [defaultPriority, setDefaultPriority] = useState('');
   const [maxPriority, setMaxPriority] = useState('');
-  const [editingSettings, setEditingSettings] = useState(false);
-  const [editingTopicIndex, setEditingTopicIndex] = useState(null);
-  const [editingValRuleIndex, setEditingValRuleIndex] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [successFullScreen, setSuccessFullScreen] = useState(false);
-  const [topicErrors, setTopicErrors] = useState({});
-  const [valRuleErrors, setValRuleErrors] = useState({});
+  const [errorMessage, setErrorMessage] = useState('');
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const handleMaxPrioritySubmit = () => {
-    if (!defaultPriority || !maxPriority || isNaN(parseInt(maxPriority)) || parseInt(maxPriority) < 1 || isNaN(parseInt(defaultPriority))) {
-      setErrorMessage('Please enter valid Default and Max Priority values.');
+  useEffect(() => {
+    fetchSettingsVersions();
+    loadLatestSettings();
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!defaultPriority || !maxPriority || isNaN(parseInt(maxPriority)) || isNaN(parseInt(defaultPriority))) {
+      setErrorMessage("❌ Please provide valid numeric values for Default and Max Priority.");
       return;
     }
-    if (parseInt(defaultPriority) > parseInt(maxPriority)) {
-      setErrorMessage('Default Priority must be less than or equal to Max Priority.');
-      return;
-    }
-    setErrorMessage('');
-    setStage('settings');
-  };
+    try {
+      const user = await getCurrentUser();
+      const userId = user.userId;
+      const hashCode = user.signInUserSession?.idToken?.jwtToken?.slice(-6) || '000000';
 
-  const validatePriority = (priority) => {
-    const num = parseInt(priority);
-    return !isNaN(num) && num >= 1 && num <= parseInt(maxPriority);
-  };
+      const settings = {
+        user_id: userId,
+        hash_code: hashCode,
+        max_priority: parseInt(maxPriority),
+        default_priority: parseInt(defaultPriority),
+        Topics_priority: topics.filter(t => t.name && t.priority).map(t => ({ topic: t.name, priority: parseInt(t.priority) })),
+        Rule_Base_priority: valRules.filter(v => v.val && v.priority && v.role_name).map(v => ({ role_name: v.role_name, value: v.val, priority: parseInt(v.priority) })),
+        Priority_boost: priorityBoost.map(b => ({ topic_name: b.topic_name, priority_boost_min_value: parseInt(b.priority_boost_min_value) }))
+      };
 
-  const addTopic = () => {
-    setTopics([...topics, { name: '', priority: '' }]);
-    setEditingTopicIndex(topics.length);
-  };
-
-  const addValRule = () => {
-    setValRules([...valRules, { val: '', priority: '' }]);
-    setEditingValRuleIndex(valRules.length);
-  };
-
-  const updateTopic = (index, field, value) => {
-    const updated = [...topics];
-    updated[index][field] = value;
-    setTopics(updated);
-  };
-
-  const updateValRule = (index, field, value) => {
-    const updated = [...valRules];
-    updated[index][field] = value;
-    setValRules(updated);
-  };
-
-  const deleteTopic = (index) => {
-    const updated = topics.filter((_, i) => i !== index);
-    setTopics(updated);
-    if (editingTopicIndex === index) {
-      setEditingTopicIndex(null);
+      const success = await saveSettingsToCloud(settings);
+      if (success) {
+        setSuccessMessage("✅ Settings saved successfully!");
+        setErrorMessage('');
+        fetchSettingsVersions();
+      } else {
+        setErrorMessage("❌ Failed to save settings to cloud.");
+        setSuccessMessage('');
+      }
+    } catch (err) {
+      console.error("❌ Failed to prepare settings:", err);
+      setErrorMessage("❌ Internal error while preparing settings.");
     }
   };
 
-  const deleteValRule = (index) => {
-    const updated = valRules.filter((_, i) => i !== index);
-    setValRules(updated);
-    if (editingValRuleIndex === index) {
-      setEditingValRuleIndex(null);
+  const saveSettingsToCloud = async (settings) => {
+    try {
+      const user = await getCurrentUser();
+      const userId = user.userId;
+      const timestamp = new Date().toISOString();
+      const fileName = `users/${userId}/settings-${timestamp}.json`;
+
+      await uploadData({
+        key: fileName,
+        data: JSON.stringify(settings, null, 2),
+        options: { contentType: 'application/json', accessLevel: 'private' }
+      }).result;
+
+      return true;
+    } catch (error) {
+      console.error("❌ Failed to upload settings:", error);
+      return false;
     }
   };
 
-  const handleSaveTopic = (index) => {
-    const topic = topics[index];
-    const errors = { ...topicErrors };
+  const fetchSettingsVersions = async () => {
+    setLoadingHistory(true);
+    try {
+      const user = await getCurrentUser();
+      const userId = user.userId;
 
-    if (topic.name.trim() === '' || !validatePriority(topic.priority)) {
-      errors[index] = 'Please fill valid Topic Name and Priority (1 - ' + maxPriority + ')';
-      setTopicErrors(errors);
-      return;
+      const result = await list({ prefix: `users/${userId}/`, options: { accessLevel: 'private' } });
+      const files = result.items.filter(file => file.key.endsWith('.json')).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+
+      setHistory(files);
+    } catch (e) {
+      console.warn("⚠️ Failed to load history:", e);
+    } finally {
+      setLoadingHistory(false);
     }
-
-    delete errors[index];
-    setTopicErrors(errors);
-    setEditingTopicIndex(null);
   };
 
-  const handleSaveValRule = (index) => {
-    const rule = valRules[index];
-    const errors = { ...valRuleErrors };
+  const loadLatestSettings = async () => {
+    try {
+      const user = await getCurrentUser();
+      const userId = user.userId;
 
-    if (rule.val.trim() === '' || !validatePriority(rule.priority)) {
-      errors[index] = 'Please fill valid Value and Priority (1 - ' + maxPriority + ')';
-      setValRuleErrors(errors);
-      return;
+      const result = await list({ prefix: `users/${userId}/`, options: { accessLevel: 'private' } });
+      const jsonFiles = result.items.filter(i => i.key.endsWith('.json')).sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+      if (!jsonFiles.length) return;
+
+      const url = await getUrl({ key: jsonFiles[0].key, options: { accessLevel: 'private', expiresIn: 300 } });
+      const response = await fetch(url.url);
+      const loaded = await response.json();
+
+      setTopics((loaded.Topics_priority || []).map(t => ({ name: t.topic, priority: t.priority.toString() })));
+      setValRules((loaded.Rule_Base_priority || []).map(r => ({ role_name: r.role_name || '', val: r.value, priority: r.priority.toString() })));
+      setPriorityBoost((loaded.Priority_boost || []).map(p => ({ topic_name: p.topic_name, priority_boost_min_value: p.priority_boost_min_value.toString() })));
+      setDefaultPriority(loaded.default_priority?.toString() || '');
+      setMaxPriority(loaded.max_priority?.toString() || '');
+      setStage('settings');
+    } catch (err) {
+      console.warn("⚠️ No settings found.", err);
     }
-
-    delete errors[index];
-    setValRuleErrors(errors);
-    setEditingValRuleIndex(null);
   };
 
-  const handleSubmit = () => {
-    if (!defaultPriority || !maxPriority) {
-      setErrorMessage('Default and Max Priority are required.');
-      return;
+  const loadVersion = async (key) => {
+    try {
+      const url = await getUrl({ key, options: { accessLevel: 'private', expiresIn: 300 } });
+      const response = await fetch(url.url);
+      const loaded = await response.json();
+
+      setTopics((loaded.Topics_priority || []).map(t => ({ name: t.topic, priority: t.priority.toString() })));
+      setValRules((loaded.Rule_Base_priority || []).map(r => ({ role_name: r.role_name || '', val: r.value, priority: r.priority.toString() })));
+      setPriorityBoost((loaded.Priority_boost || []).map(p => ({ topic_name: p.topic_name, priority_boost_min_value: p.priority_boost_min_value.toString() })));
+      setDefaultPriority(loaded.default_priority?.toString() || '');
+      setMaxPriority(loaded.max_priority?.toString() || '');
+    } catch (err) {
+      console.error("❌ Failed to load version", err);
     }
-
-    const hasInvalidTopics = topics.some(t => t.name.trim() === '' || !validatePriority(t.priority));
-    const hasInvalidValRules = valRules.some(v => v.val.trim() === '' || !validatePriority(v.priority));
-
-    if (hasInvalidTopics || hasInvalidValRules) {
-      setErrorMessage('Some settings are invalid. Please fix them before saving.');
-      return;
-    }
-
-    const settings = {
-      topics: topics.filter(t => t.name && t.priority),
-      defaultPriority,
-      priorityRange: { min: "1", max: maxPriority },
-      valRules: valRules.filter(v => v.val && v.priority),
-    };
-
-    const fileData = JSON.stringify(settings, null, 2);
-    const blob = new Blob([fileData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'user-settings.json';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setSuccessFullScreen(true);
-    setTimeout(() => {
-      setSuccessFullScreen(false);
-      setSuccessMessage('Settings saved successfully!');
-    }, 3000);
-    setErrorMessage('');
   };
-
-  if (successFullScreen) {
-    return (
-      <div className="success-fullscreen">
-        <h1 className="success-big-text">Settings Saved Successfully!</h1>
-        <img src={rocketIcon} alt="rocket" className="rocket-animation-only" />
-      </div>
-    );
-  }
 
   return (
     <div className="page-container">
@@ -160,174 +149,122 @@ function App() {
         {errorMessage && <div className="error-message">{errorMessage}</div>}
         {successMessage && <div className="success-message">{successMessage}</div>}
 
+        <h3>Settings History:</h3>
+        {loadingHistory ? <p>Loading...</p> :
+          history.length === 0 ? <p>No previous settings found.</p> :
+            <ul>
+              {history.map((h, i) => (
+                <li key={i} onClick={() => loadVersion(h.key)} style={{ cursor: 'pointer' }}>
+                  {new Date(h.lastModified).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+        }
+
         {stage === 'defineMax' ? (
           <>
             <h1>Define Priorities</h1>
-            <input
-              placeholder="Enter Default Priority"
-              value={defaultPriority}
-              onChange={(e) => setDefaultPriority(e.target.value)}
-              className="input-style"
-            />
-            <input
-              placeholder="Enter Max Priority"
-              value={maxPriority}
-              onChange={(e) => setMaxPriority(e.target.value)}
-              className="input-style"
-            />
-            <ButtonWithIcon onClick={handleMaxPrioritySubmit} text="Continue" />
+            <input placeholder="Enter Default Priority" value={defaultPriority} onChange={e => setDefaultPriority(e.target.value)} className="input-style" />
+            <input placeholder="Enter Max Priority" value={maxPriority} onChange={e => setMaxPriority(e.target.value)} className="input-style" />
+            <button onClick={() => {
+              if (!defaultPriority || !maxPriority || isNaN(parseInt(maxPriority)) || parseInt(maxPriority) < 1 || isNaN(parseInt(defaultPriority))) {
+                setErrorMessage('Please enter valid Default and Max Priority values.');
+                return;
+              }
+              if (parseInt(defaultPriority) > parseInt(maxPriority)) {
+                setErrorMessage('Default Priority must be less than or equal to Max Priority.');
+                return;
+              }
+              setErrorMessage('');
+              setStage('settings');
+            }} className="button-style">Continue</button>
           </>
         ) : (
           <>
             <h2>Settings</h2>
-            {editingSettings ? (
-              <div style={{ marginBottom: '20px' }}>
-                <input
-                  value={defaultPriority}
-                  onChange={(e) => setDefaultPriority(e.target.value)}
-                  placeholder="Default Priority"
-                  className={`input-style ${(defaultPriority.trim() === '' || isNaN(defaultPriority) || parseInt(defaultPriority) > parseInt(maxPriority)) ? 'input-error' : ''}`}
-                />
-                <input
-                  value={maxPriority}
-                  onChange={(e) => setMaxPriority(e.target.value)}
-                  placeholder="Max Priority"
-                  className={`input-style ${(maxPriority.trim() === '' || isNaN(maxPriority) || parseInt(maxPriority) < parseInt(defaultPriority)) ? 'input-error' : ''}`}
-                />
-                <button
-                  className="save-button"
-                  onClick={() => {
-                    if (
-                      defaultPriority.trim() === '' ||
-                      maxPriority.trim() === '' ||
-                      isNaN(defaultPriority) ||
-                      isNaN(maxPriority) ||
-                      parseInt(defaultPriority) > parseInt(maxPriority)
-                    ) {
-                      alert('Please enter valid settings: Default Priority must be <= Max Priority.');
-                      return;
-                    }
-                    setEditingSettings(false);
-                  }}
-                >
-                  Save Settings
-                </button>
-              </div>
-            ) : (
-              <div style={{ marginBottom: '20px' }}>
-                <p><b>Default Priority:</b> {defaultPriority}</p>
-                <p><b>Max Priority:</b> {maxPriority}</p>
-                <button className="edit-button" onClick={() => setEditingSettings(true)}>Edit Settings</button>
-              </div>
-            )}
+            <div style={{ marginBottom: '20px' }}>
+              {editingSettings ? (
+                <>
+                  <input value={defaultPriority} onChange={e => setDefaultPriority(e.target.value)} className="input-style" />
+                  <input value={maxPriority} onChange={e => setMaxPriority(e.target.value)} className="input-style" />
+                  <button className="save-button" onClick={() => setEditingSettings(false)}>Save Settings</button>
+                </>
+              ) : (
+                <>
+                  <p><b>Default Priority:</b> {defaultPriority}</p>
+                  <p><b>Max Priority:</b> {maxPriority}</p>
+                  <button className="edit-button" onClick={() => setEditingSettings(true)}>Edit Settings</button>
+                </>
+              )}
+            </div>
 
             {/* Topics Table */}
             <div className="table-header">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-            <h2 style={{ margin: 0 }}>Topics</h2>
-            <button className="plus-button" onClick={addTopic}>➕</button>
-  </div>
-</div>
-
+              <h3>Topics <button onClick={() => setTopics([...topics, { name: '', priority: '' }])} className="plus-button">➕</button></h3>
+            </div>
             <table className="styled-table">
-              <thead>
-                <tr>
-                  <th>Topic Name</th>
-                  <th>Priority</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Topic Name</th><th>Priority</th><th>Actions</th></tr></thead>
               <tbody>
                 {topics.map((topic, index) => (
                   <tr key={index}>
-                    {editingTopicIndex === index ? (
-                      <>
-                        <td>
-                          <input
-                            value={topic.name}
-                            onChange={(e) => updateTopic(index, 'name', e.target.value)}
-                            className={`input-style ${topic.name.trim() === '' ? 'input-error' : ''}`}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={topic.priority}
-                            onChange={(e) => updateTopic(index, 'priority', e.target.value)}
-                            className={`input-style ${!validatePriority(topic.priority) ? 'input-error' : ''}`}
-                          />
-                        </td>
-                        <td>
-                          <button className="save-button" onClick={() => handleSaveTopic(index)}>Save</button>
-                          <button className="delete-button" onClick={() => deleteTopic(index)}>Delete</button>
-                          {topicErrors[index] && <div className="inline-error">{topicErrors[index]}</div>}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{topic.name}</td>
-                        <td>{topic.priority}</td>
-                        <td><button className="edit-button" onClick={() => setEditingTopicIndex(index)}>Edit</button></td>
-                      </>
-                    )}
+                    <td><input value={topic.name} onChange={(e) => {
+                      const updated = [...topics]; updated[index].name = e.target.value; setTopics(updated);
+                    }} className="input-style" /></td>
+                    <td><input value={topic.priority} onChange={(e) => {
+                      const updated = [...topics]; updated[index].priority = e.target.value; setTopics(updated);
+                    }} className="input-style" /></td>
+                    <td><button className="delete-button" onClick={() => setTopics(topics.filter((_, i) => i !== index))}>Delete</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {/* Value Rules Table */}
+            {/* Value-Based Rules */}
             <div className="table-header">
-              <h2>Value-Based Rules</h2>
-              <button className="plus-button" onClick={addValRule}>➕</button>
+              <h3>Value-Based Rules <button onClick={() => setValRules([...valRules, { role_name: '', val: '', priority: '' }])} className="plus-button">➕</button></h3>
             </div>
             <table className="styled-table">
-              <thead>
-                <tr>
-                  <th>Value</th>
-                  <th>Priority</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Role Name</th><th>Value</th><th>Priority</th><th>Actions</th></tr></thead>
               <tbody>
-                {valRules.map((rule, index) => (
+                {valRules.map((val, index) => (
                   <tr key={index}>
-                    {editingValRuleIndex === index ? (
-                      <>
-                        <td>
-                          <input
-                            value={rule.val}
-                            onChange={(e) => updateValRule(index, 'val', e.target.value)}
-                            className={`input-style ${rule.val.trim() === '' ? 'input-error' : ''}`}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            value={rule.priority}
-                            onChange={(e) => updateValRule(index, 'priority', e.target.value)}
-                            className={`input-style ${!validatePriority(rule.priority) ? 'input-error' : ''}`}
-                          />
-                        </td>
-                        <td>
-                          <button className="save-button" onClick={() => handleSaveValRule(index)}>Save</button>
-                          <button className="delete-button" onClick={() => deleteValRule(index)}>Delete</button>
-                          {valRuleErrors[index] && <div className="inline-error">{valRuleErrors[index]}</div>}
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{rule.val}</td>
-                        <td>{rule.priority}</td>
-                        <td><button className="edit-button" onClick={() => setEditingValRuleIndex(index)}>Edit</button></td>
-                      </>
-                    )}
+                    <td><input value={val.role_name} onChange={(e) => {
+                      const updated = [...valRules]; updated[index].role_name = e.target.value; setValRules(updated);
+                    }} className="input-style" /></td>
+                    <td><input value={val.val} onChange={(e) => {
+                      const updated = [...valRules]; updated[index].val = e.target.value; setValRules(updated);
+                    }} className="input-style" /></td>
+                    <td><input value={val.priority} onChange={(e) => {
+                      const updated = [...valRules]; updated[index].priority = e.target.value; setValRules(updated);
+                    }} className="input-style" /></td>
+                    <td><button className="delete-button" onClick={() => setValRules(valRules.filter((_, i) => i !== index))}>Delete</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {/* Save All Button */}
-            <div style={{ marginTop: '30px' }}>
-              <ButtonWithIcon onClick={handleSubmit} text="Save All Settings" />
+            {/* Priority Boost */}
+            <div className="table-header">
+              <h3>Priority Boost <button onClick={() => setPriorityBoost([...priorityBoost, { topic_name: '', priority_boost_min_value: '' }])} className="plus-button">➕</button></h3>
             </div>
+            <table className="styled-table">
+              <thead><tr><th>Topic</th><th>Boost Min Value</th><th>Actions</th></tr></thead>
+              <tbody>
+                {priorityBoost.map((boost, index) => (
+                  <tr key={index}>
+                    <td><input value={boost.topic_name} onChange={(e) => {
+                      const updated = [...priorityBoost]; updated[index].topic_name = e.target.value; setPriorityBoost(updated);
+                    }} className="input-style" /></td>
+                    <td><input value={boost.priority_boost_min_value} onChange={(e) => {
+                      const updated = [...priorityBoost]; updated[index].priority_boost_min_value = e.target.value; setPriorityBoost(updated);
+                    }} className="input-style" /></td>
+                    <td><button className="delete-button" onClick={() => setPriorityBoost(priorityBoost.filter((_, i) => i !== index))}>Delete</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <button className="button-style" onClick={handleSubmit}>💾 Save All Settings</button>
           </>
         )}
       </div>
@@ -335,13 +272,4 @@ function App() {
   );
 }
 
-function ButtonWithIcon({ onClick, text }) {
-  return (
-    <button onClick={onClick} className="button-style">
-      <img src={rocketIcon} alt="rocket" style={{ width: '20px', height: '20px' }} />
-      {text}
-    </button>
-  );
-}
-
-export default App;
+export default withAuthenticator(App);

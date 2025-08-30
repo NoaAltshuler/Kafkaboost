@@ -1,10 +1,22 @@
-const cognitoAuthConfig = {
-    authority: "https://eu-north-1v6hez02lg.auth.eu-north-1.amazoncognito.com",
-    client_id: "3m8nr1udadq2kqnkj27l9b2bi1",
-    redirect_uri: "http://tal-noa-reactapp-kafkaboost.s3-website.eu-north-1.amazonaws.com/",
-    response_type: "code",
-    scope: "openid email profile",
-  };
-  
-  export default cognitoAuthConfig;
-  
+const authConfig = {
+  Auth: {
+    region: 'us-east-1',
+    userPoolId: 'us-east-1_BWuzmkkZC', // כמו שמופיע ב־User Pool Overview
+  // userPoolWebClientId: '37lctucgsu8p2bkg5m6rb2h4lo', // כמו שמופיע ב־App Client
+    oauth: {
+      domain: 'us-east-1bwuzmkkzc.auth.us-east-1.amazoncognito.com', // מה־Domain שהגדרת
+      scope: ['email', 'openid', 'profile'],
+      redirectSignIn: 'https://master.d158m42rfyjjwz.amplifyapp.com/',
+      redirectSignOut: 'https://master.d158m42rfyjjwz.amplifyapp.com/',
+      responseType: 'code',
+    },
+  },
+  Storage: {
+    AWSS3: {
+      bucket: 'kafkaboost-user-settings', // השם המדויק של ה־S3 bucket
+      region: 'us-east-1',
+    },
+  },
+};
+
+export default authConfig;
