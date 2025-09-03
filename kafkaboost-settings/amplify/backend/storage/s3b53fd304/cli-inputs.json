@@ -1,0 +1,14 @@
+{
+  "resourceName": "s3b53fd304",
+  "policyUUID": "b53fd304",
+  "bucketName": "kafkaboostwebsitef5b2ed53e119465ebb1961d042ec48",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}

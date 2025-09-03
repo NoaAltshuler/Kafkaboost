@@ -565,6 +565,16 @@ class S3ConfigManager:
             return boost_config.get('priority_boost_min_value', 0)
         return 0
     
+    def is_priority_boost_configured(self) -> bool:
+        """
+        Check if priority boost is configured by checking if the Priority_boost section is empty.
+        
+        Returns:
+            True if priority boost is configured (not empty), False otherwise
+        """
+        priority_boost = self.get_priority_boost()
+        return len(priority_boost) > 0
+    
     def get_full_config_for_kafka_utils(self) -> dict:
         """
         Get the complete configuration needed by kafka_utils.

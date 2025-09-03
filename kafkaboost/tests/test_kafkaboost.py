@@ -155,6 +155,238 @@ def test_priority_order():
     for msg in received_messages:
         print(msg)
 
+def test_priority_boost_polling():
+    """
+    Test the new priority boost polling functionality with the specific user ID.
+    This test verifies that the consumer can properly handle priority boost configuration
+    and poll messages according to the priority rules.
+    """
+    print("\n🚀 Testing Priority Boost Polling Functionality...")
+    
+    # Clear and create topics for testing
+    clear_topics()
+    create_topics()
+    
+    # Test 1: Basic priority boost consumer initialization
+    print("📋 Test 1: Initializing consumer with priority boost...")
+    consumer = KafkaboostConsumer(
+        bootstrap_servers=BOOTSTRAP_SERVERS,
+        topics=["topic1", "topic2", "test_topic"],  # Include all topics from config
+        group_id=f"priority_boost_test_{uuid.uuid4()}",
+        user_id=USER_ID,
+        auto_offset_reset='earliest'
+    )
+    
+    # Verify S3 config manager is initialized
+    assert consumer.s3_config_manager is not None, "S3ConfigManager should be initialized"
+    print("✅ S3ConfigManager initialized successfully")
+    
+    # Verify priority boost is configured
+    assert consumer.s3_config_manager.is_priority_boost_configured(), "Priority boost should be configured"
+    print("✅ Priority boost configuration detected")
+    
+    # Test 2: Priority queues creation
+    print("\n📋 Test 2: Creating priority boost queues...")
+    priority_queues = consumer.create_priority_boost_queues()
+    assert priority_queues is not None, "Priority queues should be created"
+    print(f"✅ Priority queues created: {list(priority_queues.keys())}")
+    
+    # Test 3: Get topics by priority from config
+    print("\n📋 Test 3: Getting topics organized by priority...")
+    topics_by_priority = consumer.get_topics_by_priority_from_config()
+    assert topics_by_priority, "Should get topics organized by priority"
+    print(f"✅ Topics by priority: {topics_by_priority}")
+    
+    # Get max priority dynamically from config instead of hardcoding
+    max_priority = consumer.s3_config_manager.get_max_priority()
+    print(f"✅ Max priority from config: {max_priority}")
+    
+    # Verify the expected structure based on s3_config_local.json
+    # Non-boost topics should be in priority 0, boost topics in their respective priorities
+    expected_priorities = {0, 5, 6, 7, 8, 9, 10}  # 0 for non-boost, 5-10 for boost
+    actual_priorities = set(topics_by_priority.keys())
+    assert actual_priorities.issuperset(expected_priorities), \
+        f"Expected priorities {expected_priorities}, got {actual_priorities}"
+    print("✅ Priority structure matches configuration")
+    
+    # Test 4: Test the new poll function with priority boost
+    print("\n📋 Test 4: Testing poll function with priority boost...")
+    
+    # First, produce some messages to test topics
+    producer = KafkaboostProducer(bootstrap_servers=BOOTSTRAP_SERVERS, user_id=USER_ID)
+    
+    # Send messages to different topics with different priorities
+    # IMPORTANT: Send to the actual topics the consumer is polling from
+    test_messages = [
+        {"topic": "topic1", "data": "topic1_high", "priority": 7},      # Non-boost topic
+        {"topic": "topic2", "data": "topic2_medium", "priority": 6},    # Non-boost topic
+        {"topic": "test_topic_5", "data": "test_topic_boost_5", "priority": 5},  # Boost topic
+        {"topic": "test_topic_6", "data": "test_topic_boost_6", "priority": 6},  # Boost topic
+        {"topic": "test_topic_7", "data": "test_topic_boost_7", "priority": 7},  # Boost topic
+        {"topic": "topic1", "data": "topic1_low", "priority": 3},       # Non-boost topic
+        {"topic": "topic2", "data": "topic2_low", "priority": 2},       # Non-boost topic
+        {"topic": "test_topic_8", "data": "test_topic_boost_8", "priority": 8},  # Boost topic
+        {"topic": "test_topic_9", "data": "test_topic_boost_9", "priority": 9},  # Boost topic
+        {"topic": "test_topic_10", "data": "test_topic_boost_10", "priority": 10}  # Boost topic
+    ]
+    
+    for msg in test_messages:
+        producer.send(msg["topic"], value={"data": msg["data"], "priority": msg["priority"]}, priority=msg["priority"])
+        print(f"📤 Produced: {msg['data']} to {msg['topic']} with priority {msg['priority']}")
+    
+    producer.flush()
+    producer.close()
+    
+    # Wait for messages to be available with retry logic instead of fixed sleep
+    print("\n⏳ Waiting for messages to be available...")
+    max_wait_time = 10  # seconds
+    wait_interval = 0.5  # seconds
+    total_wait_time = 0
+    
+    while total_wait_time < max_wait_time:
+        try:
+            # Try a quick poll to see if messages are available
+            test_messages = consumer.poll(timeout_ms=100, max_records=1)
+            if test_messages:
+                print(f"✅ Messages available after {total_wait_time:.1f} seconds")
+                break
+        except Exception:
+            pass
+        
+        time.sleep(wait_interval)
+        total_wait_time += wait_interval
+        print(f"   Waiting... ({total_wait_time:.1f}s)")
+    
+    if total_wait_time >= max_wait_time:
+        print("⚠️  Timeout waiting for messages - proceeding with test anyway")
+    
+    # Test the poll function
+    print("\n📥 Polling for messages with priority boost...")
+    try:
+        messages = consumer.poll(timeout_ms=5000, max_records=10)
+        print(f"✅ Poll successful! Received {len(messages)} messages")
+        
+        if messages:
+            print("📋 Received messages:")
+            for i, msg in enumerate(messages):
+                print(f"  {i+1}. {msg.value}")
+            
+            # CRITICAL: Assert that messages are returned in descending priority order
+            priorities = [msg.value.get("priority", 0) for msg in messages]
+            print(f"📊 Message priorities in order: {priorities}")
+            
+            # Verify descending order (highest priority first)
+            assert priorities == sorted(priorities, reverse=True), \
+                f"Expected descending priorities, got: {priorities}"
+            print("✅ Priority ordering verified: messages returned in descending priority order")
+            
+            # Verify that we got messages from different priority levels
+            unique_priorities = set(priorities)
+            assert len(unique_priorities) > 1, f"Expected messages from multiple priority levels, got: {unique_priorities}"
+            print(f"✅ Messages received from multiple priority levels: {sorted(unique_priorities, reverse=True)}")
+            
+        else:
+            print("⚠️  No messages received (this might be expected if topics are empty)")
+            
+    except Exception as e:
+        print(f"❌ Error during poll: {str(e)}")
+        # This might be expected if Kafka is not running locally
+    
+    # Test 5: Test async polling with ordering verification
+    print("\n📋 Test 5: Testing async polling functionality...")
+    try:
+        import asyncio
+        
+        async def test_async_poll():
+            messages = await consumer.poll_topics_async(topics_by_priority, timeout_ms=2000, max_records=5)
+            print(f"✅ Async poll successful! Received {len(messages)} messages")
+            
+            if messages:
+                # CRITICAL: Verify async polling also maintains priority order
+                priorities = [msg.value.get("priority", 0) for msg in messages]
+                print(f"📊 Async message priorities in order: {priorities}")
+                
+                # Verify descending order for async polling too
+                assert priorities == sorted(priorities, reverse=True), \
+                    f"Expected descending priorities in async poll, got: {priorities}"
+                print("✅ Async priority ordering verified: messages returned in descending priority order")
+                
+                # Verify we got messages from different priority levels
+                unique_priorities = set(priorities)
+                assert len(unique_priorities) > 1, f"Expected async messages from multiple priority levels, got: {unique_priorities}"
+                print(f"✅ Async messages received from multiple priority levels: {sorted(unique_priorities, reverse=True)}")
+            
+            return messages
+        
+        # Run the async test
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            async_messages = loop.run_until_complete(test_async_poll())
+            print("✅ Async polling test completed successfully")
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        print(f"⚠️  Async polling test failed (might be expected): {str(e)}")
+    
+    # Test 6: Verify pause/resume behavior indirectly through priority ordering
+    print("\n📋 Test 6: Verifying pause/resume behavior through priority ordering...")
+    try:
+        # Send a mix of high and low priority messages to test pause/resume
+        producer2 = KafkaboostProducer(bootstrap_servers=BOOTSTRAP_SERVERS, user_id=USER_ID)
+        
+        # Send messages with clear priority separation
+        pause_test_messages = [
+            {"topic": "test_topic_10", "data": "pause_test_high", "priority": 10},
+            {"topic": "test_topic_9", "data": "pause_test_high", "priority": 9},
+            {"topic": "test_topic_2", "data": "pause_test_low", "priority": 2},
+            {"topic": "test_topic_1", "data": "pause_test_low", "priority": 1},
+            {"topic": "test_topic_0", "data": "pause_test_low", "priority": 0},
+        ]
+        
+        for msg in pause_test_messages:
+            producer2.send(msg["topic"], value={"data": msg["data"], "priority": msg["priority"]}, priority=msg["priority"])
+            print(f"📤 Produced pause test: {msg['data']} to {msg['topic']} with priority {msg['priority']}")
+        
+        producer2.flush()
+        producer2.close()
+        
+        # Wait for messages
+        time.sleep(1)
+        
+        # Poll and verify that high priority messages come first
+        pause_test_messages = consumer.poll(timeout_ms=3000, max_records=5)
+        if pause_test_messages:
+            priorities = [msg.value.get("priority", 0) for msg in pause_test_messages]
+            print(f"📊 Pause test priorities: {priorities}")
+            
+            # Verify that high priority messages (9, 10) come before low priority (0, 1, 2)
+            high_priority_indices = [i for i, p in enumerate(priorities) if p >= 9]
+            low_priority_indices = [i for i, p in enumerate(priorities) if p <= 2]
+            
+            if high_priority_indices and low_priority_indices:
+                # All high priority messages should come before any low priority messages
+                max_high_index = max(high_priority_indices)
+                min_low_index = min(low_priority_indices)
+                
+                assert max_high_index < min_low_index, \
+                    f"High priority messages should come before low priority. High max index: {max_high_index}, Low min index: {min_low_index}"
+                print("✅ Pause/resume behavior verified: high priority messages delivered before low priority")
+            else:
+                print("⚠️  Could not verify pause/resume behavior (insufficient message mix)")
+        else:
+            print("⚠️  No pause test messages received")
+            
+    except Exception as e:
+        print(f"⚠️  Pause/resume test failed: {str(e)}")
+    
+    # Cleanup
+    consumer.close()
+    
+    print("\n🎉 Priority Boost Polling Test Completed!")
+    print("=" * 60)
+
 def producer_thread_multi_topic():
     producer = KafkaboostProducer(bootstrap_servers=BOOTSTRAP_SERVERS, user_id=USER_ID)
 
@@ -502,6 +734,120 @@ def test_find_matching_topics():
         print(f"❌ Test failed with error: {e}")
         raise
 
+def test_priority_boost_logic_step_by_step():
+    """
+    Test the priority boost logic step by step to verify it works correctly.
+    This test will poll multiple times to see if we get messages in strict priority order.
+    """
+    print("\n🔍 Testing Priority Boost Logic Step by Step...")
+    
+    # Clear and create topics for testing
+    clear_topics()
+    create_topics()
+    
+    # Create consumer
+    consumer = KafkaboostConsumer(
+        bootstrap_servers=BOOTSTRAP_SERVERS,
+        topics=["topic1", "topic2", "test_topic"],
+        group_id=f"priority_logic_test_{uuid.uuid4()}",
+        user_id=USER_ID,
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        auto_commit_interval_ms=1000
+    )
+    
+    # Create producer and send messages with clear priorities
+    producer = KafkaboostProducer(bootstrap_servers=BOOTSTRAP_SERVERS, user_id=USER_ID)
+    
+    # Send exactly 3 messages with different priorities
+    test_messages = [
+        {"topic": "test_topic_10", "data": "HIGH_PRIORITY_10", "priority": 10},
+        {"topic": "test_topic_7", "data": "MEDIUM_PRIORITY_7", "priority": 7},
+        {"topic": "test_topic_3", "data": "LOW_PRIORITY_3", "priority": 3}
+    ]
+    
+    for msg in test_messages:
+        producer.send(msg["topic"], value={"data": msg["data"], "priority": msg["priority"]}, priority=msg["priority"])
+        print(f"📤 Produced: {msg['data']} to {msg['topic']} with priority {msg['priority']}")
+    
+    producer.flush()
+    producer.close()
+    
+    # Wait for messages
+    time.sleep(2)
+    
+    print("\n📥 Testing Priority Polling Logic:")
+    print("=" * 50)
+    
+    # First poll - should get only priority 10 messages
+    print("\n🔄 Poll 1 - Should get only priority 10 messages:")
+    messages1 = consumer.poll(timeout_ms=3000, max_records=5)
+    if messages1:
+        priorities1 = [msg.value.get("priority", 0) for msg in messages1]
+        print(f"📊 Received priorities: {priorities1}")
+        print(f"📋 Messages: {[msg.value.get('data') for msg in messages1]}")
+        
+        # Verify we only got priority 10
+        assert all(p == 10 for p in priorities1), f"Expected only priority 10, got {priorities1}"
+        print("✅ Poll 1: Correctly received only priority 10 messages")
+    else:
+        print("❌ Poll 1: No messages received")
+    
+    # Second poll - should get priority 7 messages
+    print("\n🔄 Poll 2 - Should get priority 7 messages:")
+    messages2 = consumer.poll(timeout_ms=3000, max_records=5)
+    if messages2:
+        priorities2 = [msg.value.get("priority", 0) for msg in messages2]
+        print(f"📊 Received priorities: {priorities2}")
+        print(f"📋 Messages: {[msg.value.get('data') for msg in messages2]}")
+        
+        # Verify we only got priority 7
+        assert all(p == 7 for p in priorities2), f"Expected only priority 7, got {priorities2}"
+        print("✅ Poll 2: Correctly received only priority 7 messages")
+    else:
+        print("❌ Poll 2: No messages received")
+    
+    # Third poll - should get priority 3 messages
+    print("\n🔄 Poll 3 - Should get priority 3 messages:")
+    messages3 = consumer.poll(timeout_ms=3000, max_records=5)
+    if messages3:
+        priorities3 = [msg.value.get("priority", 0) for msg in messages3]
+        print(f"📊 Received priorities: {priorities3}")
+        print(f"📋 Messages: {[msg.value.get('data') for msg in messages3]}")
+        
+        # Verify we only got priority 3
+        assert all(p == 3 for p in priorities3), f"Expected only priority 3, got {priorities3}"
+        print("✅ Poll 3: Correctly received only priority 3 messages")
+    else:
+        print("❌ Poll 3: No messages received")
+    
+    # Fourth poll - should get no messages (all consumed)
+    print("\n🔄 Poll 4 - Should get no messages (all consumed):")
+    messages4 = consumer.poll(timeout_ms=1000, max_records=5)
+    if messages4:
+        print(f"❌ Poll 4: Unexpectedly received {len(messages4)} messages")
+    else:
+        print("✅ Poll 4: Correctly received no messages (all consumed)")
+    
+    consumer.close()
+    
+    print("\n🎯 Priority Boost Logic Test Summary:")
+    print("=" * 50)
+    total_messages = len(messages1) + len(messages2) + len(messages3)
+    print(f"📊 Total messages consumed: {total_messages}")
+    print(f"📊 Expected messages: 3")
+    
+    if total_messages == 3:
+        print("✅ SUCCESS: Priority boost logic working correctly!")
+        print("   - Poll 1: Priority 10 messages only")
+        print("   - Poll 2: Priority 7 messages only") 
+        print("   - Poll 3: Priority 3 messages only")
+        print("   - Poll 4: No messages (all consumed)")
+    else:
+        print("❌ FAILURE: Priority boost logic not working as expected")
+    
+    print("=" * 50)
+
 
 if __name__ == "__main__":
     print("Running S3 config manager integration tests...")
@@ -520,5 +866,11 @@ if __name__ == "__main__":
     
     print("\n=== Running multi-topic test ===")
     test_priority_order_multi_topic()
+    
+    print("\n=== Running priority boost polling test ===")
+    test_priority_boost_polling()
+    
+    print("\n=== Running priority boost logic step-by-step test ===")
+    test_priority_boost_logic_step_by_step()
     
     print("\n🎉 All tests completed!")

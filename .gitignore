@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AWS Configuration files with sensitive credentials
 kafkaboost/aws_config.json
 s3_config_local.json
@@ -80,4 +81,25 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+=======
+#amplify-do-not-edit-begin
+amplify/\#current-cloud-backend
+amplify/.config/local-*
+amplify/logs
+amplify/mock-data
+amplify/mock-api-resources
+amplify/backend/amplify-meta.json
+amplify/backend/.temp
+build/
+dist/
+node_modules/
+awsconfiguration.json
+amplifyconfiguration.dart
+amplify-build-config.json
+amplify-gradle-config.json
+amplifytools.xcconfig
+.secret-*
+**.sample
+#amplify-do-not-edit-end
+>>>>>>> 14f5fa27 (LAST-UPDATE)
 
