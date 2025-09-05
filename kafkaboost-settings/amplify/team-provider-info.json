@@ -1,0 +1,26 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-kafkaboostwebsite-dev-af3c1-authRole",
+      "UnauthRoleArn": "arn:aws:iam::910712879434:role/amplify-kafkaboostwebsite-dev-af3c1-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::910712879434:role/amplify-kafkaboostwebsite-dev-af3c1-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-kafkaboostwebsite-dev-af3c1-deployment",
+      "UnauthRoleName": "amplify-kafkaboostwebsite-dev-af3c1-unauthRole",
+      "StackName": "amplify-kafkaboostwebsite-dev-af3c1",
+      "StackId": "arn:aws:cloudformation:us-east-1:910712879434:stack/amplify-kafkaboostwebsite-dev-af3c1/1221a8d0-386a-11f0-a398-0affebcbdce5",
+      "AmplifyAppId": "d1hgz5clxamnqf"
+    },
+    "categories": {
+      "auth": {
+        "kafkaboostwebsite2e3a2da4": {}
+      },
+      "api": {
+        "kafkaboostwebsite": {}
+      },
+      "storage": {
+        "s3b53fd304": {}
+      }
+    }
+  }
+}
