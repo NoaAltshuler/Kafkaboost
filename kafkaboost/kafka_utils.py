@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 import logging
 from .s3_config_manager import S3ConfigManager
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 class KafkaConfigManager:

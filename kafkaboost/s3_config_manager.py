@@ -15,7 +15,7 @@ class S3ConfigManager:
     """
     AWSConfig = "kafkaboost/aws_config.json"
     def __init__(self, user_id: Optional[str] = None, auto_save_local: bool = True, local_file_path: str = "s3_config_local.json", 
-                 poll_interval: int = 600, enable_background_polling: bool = True, on_config_change: Optional[Callable] = None,
+                 poll_interval: int = 5000, enable_background_polling: bool = True, on_config_change: Optional[Callable] = None,
                  aws_config_file: Optional[str] = None):
         # Load AWS credentials from config file first
         if aws_config_file:

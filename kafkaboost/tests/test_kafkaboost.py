@@ -155,6 +155,7 @@ def test_priority_order():
     for msg in received_messages:
         print(msg)
 
+
 def producer_thread_multi_topic():
     producer = KafkaboostProducer(bootstrap_servers=BOOTSTRAP_SERVERS, user_id=USER_ID)
 
