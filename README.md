@@ -5,6 +5,7 @@
 ## 🌟 Key Features
 
 ### 🎯 Priority-Based Message Processing
+- **Automatic Priority Detection**: Detects priority by topic name, message content rules, or manual specification
 - **Priority Boost Mode**: Routes messages to priority-specific topics and serves highest priority first
 - **Standard Mode**: Sorts messages by priority field within batches
 - **Dynamic Consumer Management**: Automatically pauses/resumes consumers based on priority
@@ -15,9 +16,9 @@
 - **Dynamic Configuration Updates**: Supports runtime configuration changes
 
 ### ⚡ Enhanced Consumer Experience
-- **Async Support**: Non-blocking polling for async applications
 - **Intelligent Partitioning**: Configurable partition counts per priority level
 - **Consumer Group Management**: Unique group IDs for each priority level
+- **Priority-First Consumption**: Always serves highest priority messages first
 
 ## 🏗️ Architecture
 
@@ -51,11 +52,12 @@
 ```
 
 **KafkaBoost enhances Kafka by:**
-- 🎯 **Priority-based routing** to topic variants
-- 🔧 **Automatic topic creation** with configurable partitions  
-- 📊 **Smart consumer management** with priority queues
-- ⚙️ **S3 configuration integration** for dynamic settings
-- 🚀 **Async support** for non-blocking operations
+- 🎯 **Automatic priority detection** by topic, rules, or manual specification
+- 🔧 **Priority-based routing** to topic variants
+- 📊 **Automatic topic creation** with configurable partitions  
+- ⚙️ **Smart consumer management** with priority queues
+- 🚀 **S3 configuration integration** for dynamic settings
+- 📈 **Priority-first consumption** for optimal message processing
 
 ## 🚀 Quick Start
 
@@ -148,6 +150,106 @@ messages = consumer.poll(timeout_ms=1000)
 | `number_of_partitions` | Number of partitions for priority topics | 1 |
 | `max_priority` | Maximum priority level supported | 10 |
 
+## 🎯 Automatic Priority Detection
+
+KafkaBoost automatically detects message priority using three methods:
+
+### 1. **Topic-Based Priority** (`Topics_priority`)
+Messages sent to specific topics automatically get assigned priority:
+
+```json
+"Topics_priority": [
+  {
+    "topic": "urgent_orders",
+    "priority": 9
+  },
+  {
+    "topic": "notifications", 
+    "priority": 7
+  },
+  {
+    "topic": "reports",
+    "priority": 3
+  }
+]
+```
+
+**Usage:**
+```python
+# Messages to 'urgent_orders' automatically get priority 9
+producer.send('urgent_orders', {'order_id': 123, 'customer': 'VIP'})
+
+# Messages to 'notifications' automatically get priority 7  
+producer.send('notifications', {'message': 'Order shipped'})
+
+# Messages to 'reports' automatically get priority 3
+producer.send('reports', {'report_type': 'daily_summary'})
+```
+
+### 2. **Rule-Based Priority** (`Rule_Base_priority`)
+Messages are prioritized based on content rules:
+
+```json
+"Rule_Base_priority": [
+  {
+    "role_name": "user_role",
+    "value": "admin", 
+    "priority": 9
+  },
+  {
+    "role_name": "user_role",
+    "value": "premium",
+    "priority": 7
+  },
+  {
+    "role_name": "order_type",
+    "value": "express",
+    "priority": 8
+  }
+]
+```
+
+**Usage:**
+```python
+# Message with admin role gets priority 9
+producer.send('orders', {
+    'order_id': 123,
+    'user_role': 'admin',  # Matches rule: priority 9
+    'amount': 100
+})
+
+# Message with premium user gets priority 7
+producer.send('orders', {
+    'order_id': 124, 
+    'user_role': 'premium',  # Matches rule: priority 7
+    'amount': 50
+})
+
+# Message with express order gets priority 8
+producer.send('orders', {
+    'order_id': 125,
+    'order_type': 'express',  # Matches rule: priority 8
+    'amount': 75
+})
+```
+
+### 3. **Manual Priority** (Fallback)
+If no automatic rules match, you can still specify priority manually:
+
+```python
+# Manual priority override
+producer.send('orders', {
+    'order_id': 126,
+    'amount': 200
+}, priority=10)  # Explicit priority 10
+```
+
+### **Priority Resolution Order:**
+1. **Manual priority** (if specified) - Highest precedence
+2. **Rule-based priority** (if message matches rules)
+3. **Topic-based priority** (if topic has priority configured)
+4. **Default priority** (from configuration)
+
 ## 🔄 Priority Boost Mode
 
 ### How It Works
@@ -199,35 +301,79 @@ producer.send('orders', {
 }, priority=5)   # Goes to orders_5 topic
 ```
 
-### Consumer with Async Support
+### Continuous Message Processing
 
 ```python
-import asyncio
 from kafkaboost.consumer import KafkaboostConsumer
 
-async def consume_orders():
-    consumer = KafkaboostConsumer(
-        bootstrap_servers=['localhost:9092'],
-        topics=['orders'],
-        user_id='user123'
-    )
-    
-    try:
-        while True:
-            # Non-blocking async polling
-            messages = await consumer.poll_async(timeout_ms=1000)
-            
-            for msg in messages:
-                priority = msg.value.get('priority', 0)
-                print(f"Processing order with priority {priority}")
-                
-    except KeyboardInterrupt:
-        print("Stopping consumer...")
-    finally:
-        consumer.close()
+# Create consumer with your user ID from the website
+consumer = KafkaboostConsumer(
+    bootstrap_servers=['localhost:9092'],
+    topics=['orders'],
+    group_id='order_processing_group',
+    user_id='your-user-id-from-website'
+)
 
-# Run async consumer
-asyncio.run(consume_orders())
+try:
+    while True:
+        # Poll for messages (highest priority first)
+        messages = consumer.poll(timeout_ms=1000)
+        
+        for msg in messages:
+            # Get message data
+            order_data = msg.value
+            priority = order_data.get('priority', 0)
+            order_id = order_data.get('order_id')
+            
+            print(f"Processing order {order_id} with priority {priority}")
+            
+            # Process the order based on priority
+            if priority >= 8:
+                print(f"🚨 URGENT: Processing high-priority order {order_id}")
+            elif priority >= 5:
+                print(f"⚡ Processing medium-priority order {order_id}")
+            else:
+                print(f"📋 Processing standard order {order_id}")
+                
+except KeyboardInterrupt:
+    print("Stopping consumer...")
+finally:
+    consumer.close()
+```
+
+### Working with Multiple Topics
+
+```python
+from kafkaboost.consumer import KafkaboostConsumer
+
+# Consumer can handle multiple topics
+consumer = KafkaboostConsumer(
+    bootstrap_servers=['localhost:9092'],
+    topics=['orders', 'notifications', 'payments'],
+    group_id='multi_topic_group',
+    user_id='your-user-id-from-website'
+)
+
+try:
+    while True:
+        messages = consumer.poll(timeout_ms=1000)
+        
+        for msg in messages:
+            topic = msg.topic
+            data = msg.value
+            
+            # Handle different message types
+            if 'orders' in topic:
+                print(f"📦 Order message: {data}")
+            elif 'notifications' in topic:
+                print(f"🔔 Notification: {data}")
+            elif 'payments' in topic:
+                print(f"💳 Payment: {data}")
+                
+except KeyboardInterrupt:
+    print("Stopping consumer...")
+finally:
+    consumer.close()
 ```
 
 ### Configuration Management
@@ -295,56 +441,7 @@ print(f"Active consumers: {len(consumer.priority_consumer_manager.consumers)}")
 print(f"Current subscription: {consumer.current_subscription}")
 ```
 
-## 🧪 Testing
-
-### Run Priority Boost Tests
-
-```bash
-# Run comprehensive priority boost tests
-python kafkaboost/tests/test_priority_boost_kafka.py
-
-# Run specific test scenarios
-python simple_priority_test.py
-python fresh_consumer_test.py
-```
-
-### Test Results
-
-The test suite validates:
-- ✅ Priority-based message routing
-- ✅ Consumer group management
-- ✅ Topic creation and management
-- ✅ Dynamic consumer pausing/resuming
-- ✅ Configuration updates
-
 ## 🚨 Troubleshooting
-
-### Common Issues
-
-1. **Priority Boost Not Enabled**
-   ```python
-   # Check S3 configuration
-   summary = consumer.get_config_summary()
-   print(f"Priority boost: {summary['priority_boost_enabled']}")
-   ```
-
-2. **Topics Not Created**
-   ```python
-   # Manually create topics
-   config_manager = KafkaConfigManager('localhost:9092', user_id='user123')
-   config_manager.check_and_create_priority_topics()
-   ```
-
-3. **Consumer Group Issues**
-   ```python
-   # Use unique group IDs
-   consumer = KafkaboostConsumer(
-       bootstrap_servers=['localhost:9092'],
-       topics=['orders'],
-       group_id='unique_group_id',  # Ensure uniqueness
-       user_id='user123'
-   )
-   ```
 
 ### Debug Mode
 
@@ -373,8 +470,7 @@ consumer = KafkaboostConsumer(
 - `**kwargs`: Additional KafkaConsumer parameters
 
 #### Key Methods
-- `poll(timeout_ms=1000, max_records=None)`: Poll for messages
-- `poll_async(timeout_ms=1000, max_records=None)`: Async polling
+- `poll(timeout_ms=1000, max_records=None)`: Poll for messages (highest priority first)
 - `refresh_config()`: Refresh configuration from S3
 - `get_config_summary()`: Get configuration summary
 - `close()`: Close consumer and cleanup
@@ -397,7 +493,6 @@ consumer = KafkaboostConsumer(
 - `user_id`: User ID for S3 config lookup
 
 #### Key Methods
-- `check_and_create_priority_topics()`: Create priority topics
 - `get_config_summary()`: Get configuration summary
 - `find_matching_topics(base_topics)`: Find priority topic variants
 
@@ -467,7 +562,6 @@ producer = KafkaboostProducer(
 
 - `kafka-python` - Core Kafka functionality
 - `boto3` - S3 configuration management
-- `asyncio` - Async support (Python 3.7+)
 
 ## 📄 License
 
@@ -480,13 +574,6 @@ This project extends the existing kafkaboost library with priority-aware feature
 3. Add tests for new functionality
 4. Ensure all tests pass
 5. Submit a pull request
-
-## 📞 Support
-
-For issues and questions:
-- Check the troubleshooting section
-- Review the test examples
-- Open an issue on GitHub
 
 ---
 
