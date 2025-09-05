@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from kafkaboost.kafka_utils import KafkaConfigManager
 from .s3_config_manager import S3ConfigManager
+from .priority_consumer_manager import PriorityConsumerManager
 
 
 class KafkaboostConsumer(KafkaConsumer):
@@ -49,14 +50,17 @@ class KafkaboostConsumer(KafkaConsumer):
         self.user_id = user_id
         self.s3_config_manager = None
         self.boost_config = {}
+        self.priority_consumer_manager = None
+        self.priority_boost_enabled = False
         
-     
+        # Initialize S3 config manager
         try:
             self.s3_config_manager = S3ConfigManager(user_id=user_id)
             print("✓ Consumer initialized with S3ConfigManager")
         except Exception as e:
             print(f"Warning: Could not initialize S3ConfigManager: {str(e)}")
 
+        # Initialize Kafka utils manager
         try:
             self.kafka_utils_manager = KafkaConfigManager(
                 bootstrap_servers=bootstrap_servers,
@@ -68,8 +72,8 @@ class KafkaboostConsumer(KafkaConsumer):
         except Exception as e:
                 print(f"Warning: Could not initialize KafkaConfigManager: {str(e)}")
         
-        # Subscribe to topics
-        self.subscribe(topics_list)
+        # Check if priority boost mode should be enabled
+        self._initialize_priority_boost_mode(bootstrap_servers, topics_list, group_id, kwargs)
         
         # Initialize iterator-related variables
         self._iterator = None
@@ -80,6 +84,53 @@ class KafkaboostConsumer(KafkaConsumer):
         if self.s3_config_manager:
             self.max_priority = self.s3_config_manager.get_max_priority()
 
+    def _initialize_priority_boost_mode(self, bootstrap_servers, topics_list, group_id, kwargs):
+        """
+        Initialize priority boost mode if configuration supports it.
+        
+        Args:
+            bootstrap_servers: Kafka server address(es)
+            topics_list: List of topics to consume from
+            group_id: Consumer group ID
+            kwargs: Additional arguments for consumers
+        """
+        if not self.s3_config_manager or not self.user_id:
+            print("ℹ️ Priority boost mode not available (no S3 config or user_id)")
+            return
+        
+        try:
+            # Check if priority boost configuration exists
+            priority_boost_configs = self.s3_config_manager.get_priority_boost()
+            
+            if priority_boost_configs:
+                # Check if any of our topics have priority boost configuration
+                base_topics = [topics_list] if isinstance(topics_list, str) else topics_list
+                has_priority_boost_topics = any(
+                    config.get('topic_name') in base_topics 
+                    for config in priority_boost_configs
+                )
+                
+                if has_priority_boost_topics:
+                    print("🚀 Priority boost mode detected - initializing PriorityConsumerManager")
+                    
+                    # Initialize PriorityConsumerManager
+                    self.priority_consumer_manager = PriorityConsumerManager(
+                        bootstrap_servers=bootstrap_servers,
+                        base_topics=base_topics,
+                        group_id=group_id,
+                        user_id=self.user_id,
+                        **kwargs
+                    )
+                    
+                    self.priority_boost_enabled = True
+                    print("✅ Priority boost mode enabled")
+                    return
+            
+            print("ℹ️ No priority boost configuration found for topics, using standard mode")
+            
+        except Exception as e:
+            print(f"Warning: Could not initialize priority boost mode: {str(e)}")
+            print("ℹ️ Falling back to standard mode")
 
     def _process_priority_messages(self, records: Dict) -> List:
         print("Processing priority messages...")
@@ -114,8 +165,13 @@ class KafkaboostConsumer(KafkaConsumer):
         Returns:
             List of messages sorted by priority and timestamp
         """
-        # Get raw messages from parent class
-        print("Polling for messages in priority order...")
+        # Use PriorityConsumerManager if priority boost is enabled
+        if self.priority_boost_enabled and self.priority_consumer_manager:
+            print("Polling for messages using priority boost mode...")
+            return self.priority_consumer_manager.poll(timeout_ms, max_records)
+        
+        # Standard mode - use original implementation
+        print("Polling for messages in standard priority order...")
         raw_records = super().poll(
             timeout_ms=timeout_ms,
             max_records=max_records,
@@ -130,16 +186,42 @@ class KafkaboostConsumer(KafkaConsumer):
         
         return sorted_messages
 
+    async def poll_async(
+        self,
+        timeout_ms: int = 1000,
+        max_records: Optional[int] = None,
+        **kwargs: Any
+    ) -> List[Any]:
+        """
+        Async version of poll for non-blocking operation.
+        
+        Args:
+            timeout_ms: Time to wait for messages
+            max_records: Maximum number of records to return
+            **kwargs: Additional arguments
+            
+        Returns:
+            List of messages sorted by priority and timestamp
+        """
+        # Use PriorityConsumerManager if priority boost is enabled
+        if self.priority_boost_enabled and self.priority_consumer_manager:
+            print("Async polling for messages using priority boost mode...")
+            return await self.priority_consumer_manager.poll_async(timeout_ms, max_records)
+        
+        # Standard mode - run sync poll in thread pool
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.poll, timeout_ms, max_records, **kwargs)
+
     def _message_generator_v2(self):
         """Generator that yields messages in priority order."""
         timeout_ms = 1000 * max(0, self._consumer_timeout - time.time())
-        record_map = super().poll(timeout_ms=timeout_ms, update_offsets=False)
         
-        # Sort messages by priority
-        sorted_messages = self._process_priority_messages(record_map)
+        # Use our poll method instead of super().poll() to get priority-aware messages
+        messages = self.poll(timeout_ms=timeout_ms)
         
         # Yield messages in priority order
-        for message in sorted_messages:
+        for message in messages:
             if self._closed:
                 break
             yield message
@@ -178,6 +260,11 @@ class KafkaboostConsumer(KafkaConsumer):
                 self.boost_config = self.s3_config_manager.get_full_config_for_consumer()
                 self.max_priority = self.s3_config_manager.get_max_priority()
                 print("✓ Configuration refreshed from S3")
+                
+                # Refresh PriorityConsumerManager if it exists
+                if self.priority_consumer_manager:
+                    self.priority_consumer_manager.refresh_config()
+                    
             except Exception as e:
                 print(f"Warning: Failed to refresh config from S3: {str(e)}")
 
@@ -188,17 +275,37 @@ class KafkaboostConsumer(KafkaConsumer):
         Returns:
             Dictionary with configuration summary
         """
-        if self.s3_config_manager:
-            return self.s3_config_manager.get_config_summary()
+        summary = {
+            'priority_boost_enabled': self.priority_boost_enabled,
+            'has_priority_consumer_manager': self.priority_consumer_manager is not None
+        }
+        
+        if self.priority_consumer_manager:
+            # Get summary from PriorityConsumerManager
+            priority_summary = self.priority_consumer_manager.get_config_summary()
+            summary.update(priority_summary)
+        elif self.s3_config_manager:
+            # Get summary from S3 config manager
+            s3_summary = self.s3_config_manager.get_config_summary()
+            summary.update(s3_summary)
         else:
-            return {
+            # Fallback summary
+            summary.update({
                 'config_source': 'none',
-                'max_priority': self.max_priority,
+                'max_priority': getattr(self, 'max_priority', 10),
                 'topics_count': len(self.boost_config.get('Topics_priority', [])),
                 'rules_count': len(self.boost_config.get('Rule_Base_priority', [])),
                 'boost_configs_count': len(self.boost_config.get('Priority_boost', []))
-            }
+            })
+        
+        return summary
 
     def close(self) -> None:
         """Close the consumer."""
+        # Close PriorityConsumerManager if it exists
+        if self.priority_consumer_manager:
+            self.priority_consumer_manager.close()
+            self.priority_consumer_manager = None
+        
+        # Close the base consumer
         super().close()

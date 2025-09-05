@@ -1,0 +1,35 @@
+{
+  "user_id": "5428b428-20a1-7051-114f-c24ede151b86",
+  "hash_code": "000000",
+  "max_priority": 10,
+  "default_priority": 0,
+  "Topics_priority": [
+    {
+      "topic": "topic1",
+      "priority": 7
+    },
+    {
+      "topic": "topic2",
+      "priority": 6
+    }
+  ],
+  "Rule_Base_priority": [
+    {
+      "role_name": "admin",
+      "value": "high",
+      "priority": 9
+    },
+    {
+      "role_name": "user",
+      "value": "medium",
+      "priority": 5
+    }
+  ],
+  "Priority_boost": [
+    {
+      "topic_name": "test_topic",
+      "priority_boost_min_value": 5,
+      "number_of_partitions": 9
+    }
+  ]
+}
