@@ -337,6 +337,7 @@ class PriorityConsumerManager:
         base_topics: Union[str, List[str]],
         group_id: str,
         user_id: Optional[str] = None,
+        auto_offset_reset: str = 'latest',
         **kwargs: Any
     ):
         """
@@ -347,12 +348,14 @@ class PriorityConsumerManager:
             base_topics: Base topic(s) to consume from
             group_id: Consumer group ID
             user_id: User ID for S3 config manager
+            auto_offset_reset: Offset reset policy for priority consumers ('earliest', 'latest', 'none')
             **kwargs: Additional arguments for KafkaConsumer
         """
         self.bootstrap_servers = bootstrap_servers
         self.base_topics = [base_topics] if isinstance(base_topics, str) else base_topics
         self.group_id = group_id
         self.user_id = user_id
+        self.auto_offset_reset = auto_offset_reset
         self.kwargs = kwargs
         
         # Initialize configuration management
@@ -474,10 +477,14 @@ class PriorityConsumerManager:
                 is_base_consumer=False
             )
             
+            # Create kwargs for priority consumer with specified auto_offset_reset
+            priority_kwargs = self.kwargs.copy()
+            priority_kwargs['auto_offset_reset'] = self.auto_offset_reset
+            
             consumer = PriorityConsumer(
                 bootstrap_servers=self.bootstrap_servers,
                 config=config,
-                **self.kwargs
+                **priority_kwargs
             )
             
             self.consumers[priority] = consumer

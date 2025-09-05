@@ -114,11 +114,15 @@ class KafkaboostConsumer(KafkaConsumer):
                     print("🚀 Priority boost mode detected - initializing PriorityConsumerManager")
                     
                     # Initialize PriorityConsumerManager
+                    # Extract auto_offset_reset from kwargs to avoid duplication
+                    auto_offset_reset = kwargs.pop('auto_offset_reset', 'latest')
+                    
                     self.priority_consumer_manager = PriorityConsumerManager(
                         bootstrap_servers=bootstrap_servers,
                         base_topics=base_topics,
                         group_id=group_id,
                         user_id=self.user_id,
+                        auto_offset_reset=auto_offset_reset,
                         **kwargs
                     )
                     

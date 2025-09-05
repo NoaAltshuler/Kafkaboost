@@ -242,7 +242,7 @@ def test_end_to_end_priority_flow():
         consumer = KafkaboostConsumer(
             bootstrap_servers=BOOTSTRAP_SERVERS,
             topics=[TEST_TOPIC],
-            group_id=f"{GROUP_ID_PREFIX}_e2e_{uuid.uuid4()}",
+            group_id=f"{GROUP_ID_PREFIX}_e2e",
             user_id=USER_ID,
             auto_offset_reset='earliest',
             consumer_timeout_ms=10000
@@ -256,7 +256,6 @@ def test_end_to_end_priority_flow():
             if messages:
                 received_messages.extend(messages)
                 print(f"  Attempt {attempt + 1}: Received {len(messages)} messages")
-                print(f"  Received messages: {received_messages}")
             else:
                 print(f"  Attempt {attempt + 1}: No messages received")
             
