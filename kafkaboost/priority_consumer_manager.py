@@ -105,6 +105,10 @@ class PriorityConsumer:
                         message.value['priority'] = self.priority_level
                     messages.append(message)
             
+            # For base consumer, sort messages by priority field before adding to queue
+            if self.is_base_consumer and messages:
+                messages.sort(key=lambda msg: msg.value.get('priority', 0), reverse=True)
+            
             # Add messages to queue
             with self.queue_lock:
                 self.message_queue.extend(messages)

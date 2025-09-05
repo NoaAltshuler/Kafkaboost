@@ -66,9 +66,6 @@ class KafkaboostConsumer(KafkaConsumer):
                 bootstrap_servers=bootstrap_servers,
                 user_id=user_id
             )
-            if self.kafka_utils_manager:
-                boost_topics = self.kafka_utils_manager.find_matching_topics(topics_list)
-                print(f"Found matching topics: {boost_topics}")
         except Exception as e:
                 print(f"Warning: Could not initialize KafkaConfigManager: {str(e)}")
         
@@ -105,10 +102,15 @@ class KafkaboostConsumer(KafkaConsumer):
             if priority_boost_configs:
                 # Check if any of our topics have priority boost configuration
                 base_topics = [topics_list] if isinstance(topics_list, str) else topics_list
-                has_priority_boost_topics = any(
-                    config.get('topic_name') in base_topics 
-                    for config in priority_boost_configs
-                )
+                has_priority_boost_topics = False
+                for config in priority_boost_configs:
+                    if config.get('topic_name') in base_topics:
+                        has_priority_boost_topics = True
+                        break
+                # has_priority_boost_topics = any(
+                #     config.get('topic_name') in base_topics 
+                #     for config in priority_boost_configs
+                # )
                 
                 if has_priority_boost_topics:
                     print("🚀 Priority boost mode detected - initializing PriorityConsumerManager")
