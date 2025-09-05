@@ -67,31 +67,45 @@ pip install kafkaboost
 
 ### Basic Usage
 
+#### Step 1: Configure Your Settings
+1. **Visit the KafkaBoost Configuration Website**: [https://master.d1hgz5clxamnqf.amplifyapp.com/](https://master.d1hgz5clxamnqf.amplifyapp.com/)
+2. **Login** to your account
+3. **Select your required configuration** (topics, priorities, partitions, etc.)
+4. **Copy your User ID** from the dashboard
+
+#### Step 2: Use KafkaBoost (Just like Kafka + User ID)
+
 ```python
 from kafkaboost.consumer import KafkaboostConsumer
 from kafkaboost.producer import KafkaboostProducer
 
-# Producer with priority routing
+# Producer with priority routing (just add user_id to your existing Kafka code)
 producer = KafkaboostProducer(
     bootstrap_servers=['localhost:9092'],
-    user_id='user123'  # Enables S3 config lookup
+    user_id='your-user-id-from-website'  # Copy from configuration website
 )
 
 # Send messages with different priorities
 producer.send('orders', {'order_id': 1, 'priority': 5})
 producer.send('orders', {'order_id': 2, 'priority': 10})  # Higher priority
 
-# Consumer with priority boost
+# Consumer with priority boost (just add user_id to your existing Kafka code)
 consumer = KafkaboostConsumer(
     bootstrap_servers=['localhost:9092'],
     topics=['orders'],
     group_id='priority_group',
-    user_id='user123'  # Enables priority boost mode
+    user_id='your-user-id-from-website'  # Copy from configuration website
 )
 
 # Messages are automatically served by priority (10 first, then 5)
 messages = consumer.poll(timeout_ms=1000)
 ```
+
+#### Step 3: That's It!
+- ✅ **No configuration files needed** - everything is managed on the website
+- ✅ **Automatic topic creation** - topics are created based on your configuration
+- ✅ **Priority routing** - messages are automatically routed to priority topics
+- ✅ **Smart consumption** - highest priority messages are served first
 
 ## 📋 Configuration
 
@@ -389,34 +403,41 @@ consumer = KafkaboostConsumer(
 
 ## 🔄 Migration Guide
 
-### From Standard Kafka Consumer
+### Step 1: Configure on Website
+1. **Visit**: [https://master.d1hgz5clxamnqf.amplifyapp.com/](https://master.d1hgz5clxamnqf.amplifyapp.com/)
+2. **Login** and configure your topics, priorities, and settings
+3. **Copy your User ID** from the dashboard
+
+### Step 2: Update Your Code
+
+#### From Standard Kafka Consumer
 
 ```python
 # Before
 from kafka import KafkaConsumer
 consumer = KafkaConsumer('orders', bootstrap_servers=['localhost:9092'])
 
-# After
+# After (just add user_id!)
 from kafkaboost.consumer import KafkaboostConsumer
 consumer = KafkaboostConsumer(
     bootstrap_servers=['localhost:9092'],
     topics=['orders'],
-    user_id='user123'  # Enables priority boost
+    user_id='your-user-id-from-website'  # Copy from configuration website
 )
 ```
 
-### From Standard Kafka Producer
+#### From Standard Kafka Producer
 
 ```python
 # Before
 from kafka import KafkaProducer
 producer = KafkaProducer(bootstrap_servers=['localhost:9092'])
 
-# After
+# After (just add user_id!)
 from kafkaboost.producer import KafkaboostProducer
 producer = KafkaboostProducer(
     bootstrap_servers=['localhost:9092'],
-    user_id='user123'  # Enables priority routing
+    user_id='your-user-id-from-website'  # Copy from configuration website
 )
 ```
 
