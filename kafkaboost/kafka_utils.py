@@ -134,6 +134,7 @@ class KafkaConfigManager:
         for topic_entry in priority_config:
             topic_name = topic_entry.get("topic_name")
             min_priority = topic_entry.get("priority_boost_min_value", 0)
+            num_partitions = topic_entry.get("number_of_partitions", 1)
             if not topic_name:
                 continue
 
@@ -143,11 +144,11 @@ class KafkaConfigManager:
                     try:
                         new_topic = NewTopic(
                             name=full_topic,
-                            num_partitions=1,
+                            num_partitions=num_partitions,
                             replication_factor=1
                         )
                         self.admin_client.create_topics([new_topic])
-                        logger.info(f"Created topic: {full_topic}")
+                        logger.info(f"Created topic: {full_topic} with {num_partitions} partitions")
                     except TopicAlreadyExistsError:
                         logger.info(f"Topic {full_topic} already exists")
                     except Exception as e:

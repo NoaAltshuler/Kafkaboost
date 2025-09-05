@@ -411,6 +411,14 @@ class PriorityConsumerManager:
             self._create_base_consumer()
             return
         
+        # Priority boost mode - ensure priority topics exist before creating consumers
+        if self.kafka_utils_manager:
+            print("🔧 Ensuring priority topics exist...")
+            if self.kafka_utils_manager.check_and_create_priority_topics():
+                print("✅ Priority topics verified/created successfully")
+            else:
+                print("⚠️ Warning: Could not verify/create priority topics")
+        
         # Priority boost mode - create multiple consumers
         self.priority_queue_manager = PriorityQueueManager(self.max_priority)
         
@@ -608,6 +616,15 @@ class PriorityConsumerManager:
                     self.max_priority = new_max_priority
                     self.priority_boost_configs = new_boost_configs
                     self.priority_boost_enabled = bool(new_boost_configs)
+                    
+                    # Ensure priority topics exist before reinitializing consumers
+                    if self.kafka_utils_manager and self.priority_boost_enabled:
+                        print("🔧 Ensuring priority topics exist for new configuration...")
+                        if self.kafka_utils_manager.check_and_create_priority_topics():
+                            print("✅ Priority topics verified/created successfully")
+                        else:
+                            print("⚠️ Warning: Could not verify/create priority topics")
+                    
                     self._initialize_consumers()
                     print("✅ Consumers reinitialized with new configuration")
                 else:
