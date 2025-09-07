@@ -70,7 +70,7 @@ pip install kafkaboost
 ### Basic Usage
 
 #### Step 1: Configure Your Settings
-1. **Visit the KafkaBoost Configuration Website**:[[https://master.d1hgz5clxamnqf.amplifyapp.com/](https://master.d1hgz5clxamnqf.amplifyapp.com/)](https://master.d1disovd4gm7yp.amplifyapp.com/)
+1. **Visit the KafkaBoost Configuration Website**:[[[https://master.d1hgz5clxamnqf.amplifyapp.com/](https://master.d1hgz5clxamnqf.amplifyapp.com/)](https://master.d1disovd4gm7yp.amplifyapp.com/)](https://master.d1disovd4gm7yp.amplifyapp.com/)
 2. **Login** to your account
 3. **Select your required configuration** (topics, priorities, partitions, etc.)
 4. **Copy your User ID** from the dashboard
