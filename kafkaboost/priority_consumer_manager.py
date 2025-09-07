@@ -556,6 +556,7 @@ class PriorityConsumerManager:
             per_consumer_timeout = priority_timeout // len(active_priority_consumers)
             
             for consumer in active_priority_consumers:
+                print(f"Polling priority {consumer.priority_level} consumer")
                 consumer.poll(per_consumer_timeout)
         
         # Poll from base consumer last (lowest priority)

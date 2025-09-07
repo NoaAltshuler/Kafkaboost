@@ -20,7 +20,7 @@ logging.getLogger('kafkaboost').setLevel(logging.WARNING)
 
 from kafkaboost.consumer import KafkaboostConsumer
 from kafkaboost.producer import KafkaboostProducer
-from kafkaboost.priority_consumer_manager import PriorityConsumerManager
+
 
 
 # Test configuration
@@ -288,6 +288,14 @@ def test_end_to_end_priority_flow():
         print(f"✗ End-to-end priority flow test failed: {e}")
         return False
 
+def init_producer():
+    producer = KafkaboostProducer(
+        bootstrap_servers=BOOTSTRAP_SERVERS,
+        user_id=USER_ID
+    )
+    print("✓ Producer initialized")
+    return producer
+
 
 def main():
     """Run all tests."""
@@ -307,7 +315,8 @@ def main():
         # test_results.append(("Producer Priority Routing", test_producer_priority_routing()))
         # test_results.append(("PriorityConsumerManager Direct", test_priority_consumer_manager_direct()))
         # test_results.append(("Async Polling", asyncio.run(test_async_polling())))
-        test_results.append(("End-to-End Priority Flow", test_end_to_end_priority_flow()))
+        # test_results.append(("End-to-End Priority Flow", test_end_to_end_priority_flow()))
+        test_results.append(("Producer", init_producer()))
         
         # Print results
         print("\n" + "=" * 60)

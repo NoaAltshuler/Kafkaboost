@@ -55,6 +55,7 @@ class KafkaboostConsumer(KafkaConsumer):
         
         # Initialize S3 config manager
         try:
+            print(f"Initializing S3ConfigManager with user_id: {user_id}")
             self.s3_config_manager = S3ConfigManager(user_id=user_id)
             print("✓ Consumer initialized with S3ConfigManager")
         except Exception as e:
